@@ -1,62 +1,61 @@
-# 🧳 Moonshot Luggage Intelligence Dashboard
+# Moonshot Luggage Intelligence
 
-An end-to-end competitive intelligence pipeline and interactive dashboard analyzing luggage brands on Amazon India. This system bypasses aggressive bot-protection to scrape raw marketplace data, processes unstructured reviews into structured sentiment and aspect themes, and uses an LLM to generate decision-ready business insights.
+Competitive intelligence pipeline for Amazon India luggage brands. The project collects product and review data, builds a structured SQLite dataset, computes sentiment and theme signals, generates strategic insights, and serves an interactive dashboard.
 
-## 🏗️ Architecture & Tech Stack
+## Stack
 
-- **Data Acquisition (Scraper):** Playwright (CDP mode) + Python. Connects to a live Chrome instance to evade bot detection.
-- **Storage:** SQLite (`data/luggage.db`) ingested via `INSERT OR REPLACE` for idempotent updates.
-- **NLP Pipeline:** `VADER` for lightweight, deterministic sentence-level sentiment analysis. Rule-based aspect extraction for high-accuracy theme tagging (wheels, zippers, durability).
-- **LLM Insights Agent:** Google Gemini (auto-selects available model). If API quota is exhausted, script generates deterministic fallback insights so the dashboard still works.
-- **Frontend:** Streamlit + Plotly for a responsive, filterable, dynamic UI.
+- Scraping: Playwright (CDP connection to a real Chrome session)
+- Storage: SQLite (`data/luggage.db`)
+- Processing: NLTK VADER + rule-based aspect extraction
+- Insight generation: deterministic strategy logic with optional Gemini refinement
+- Visualization: Streamlit + Plotly
 
-## ⚙️ Prerequisites
+## Requirements
 
-This project is optimized for a Linux environment (like WSL on Windows).
+- Python 3.11+
+- `uv`
+- Google Chrome
+- Optional: Gemini API key in `.env`
 
-1.  **Python 3.11+**
-2.  **uv** (Fast Python package installer and resolver)
-3.  **Google Chrome** installed on the host machine.
-4.  **Gemini API Key** (Free tier from Google AI Studio).
+Environment variable:
 
-## 🚀 Installation & Setup
+```env
+GEMINI_API_KEY=your_api_key
+```
 
-1. Clone the repository and initialize the environment:
+## Command Reference
 
-   ```bash
-   uv sync
-   uv run playwright install chromium
-   ```
+### Environment and browser
 
-2. Create a `.env` file in the root directory:
+```bash
+uv sync
+```
 
-   ```env
-   GEMINI_API_KEY=your_actual_api_key_here
-   ```
+Responsibility: install Python dependencies from project lock/config.
 
-3. Launch Chrome with remote debugging enabled (Required for the scraper):
-   ```bash
-   # Windows (Run in PowerShell/CMD, not WSL)
-   & "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\chrome-debug"
-   ```
+```bash
+uv run playwright install chromium
+```
 
-## 🔄 Execution Workflow
-
-The pipeline consists of four distinct phases, executed sequentially:
-
-### Phase 1: Data Acquisition
-
-#### Step A: Start Chrome in Debug Mode
-
-Required for Playwright CDP connection.
+Responsibility: install Playwright browser runtime required by scraping scripts.
 
 ```bash
 & "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\chrome-debug"
 ```
 
-#### Step B: Scrape Product Listings Per Brand
+Responsibility: start Chrome with remote debugging so `scraper.py` can attach via CDP.
 
-Each command opens the search flow for one brand and writes to `data/raw/{brand}_products.json`.
+### Data collection
+
+```bash
+uv run python scraper.py --mode search --brand <brand_name>
+```
+
+Responsibility: collect product listing cards for one brand.
+
+Output: `data/raw/<brand_name>_products.json`
+
+Example brands:
 
 ```bash
 uv run python scraper.py --mode search --brand safari
@@ -67,89 +66,80 @@ uv run python scraper.py --mode search --brand aristocrat
 uv run python scraper.py --mode search --brand nasher_miles
 ```
 
-#### Step C: Bulk Review Scraping (Recommended)
-
-This uses `bulk_reviews.py` to:
-
-- read all ASINs from `*_products.json`
-- save grouped ASINs to `data/asins_by_brand.json`
-- visit review pages automatically
-- save reviews to `data/raw/{brand}_reviews.json`
-
 ```bash
 uv run python bulk_reviews.py --brands safari skybags american_tourister vip aristocrat nasher_miles --max-asins-per-brand 10 --pages-per-asin 2
 ```
 
+Responsibility: run batch review scraping across brands and ASINs.
+
+Outputs:
+
+- `data/asins_by_brand.json`
+- `data/raw/<brand_name>_reviews.json`
+
 Useful variants:
 
 ```bash
-# reuse existing ASIN map instead of rebuilding from product files
 uv run python bulk_reviews.py --brands safari skybags american_tourister vip aristocrat nasher_miles --max-asins-per-brand 10 --pages-per-asin 2 --use-existing-asins
-
-# quick smoke test
 uv run python bulk_reviews.py --brands safari --max-asins-per-brand 1 --pages-per-asin 1
 ```
 
-#### Optional: Manual Review Scraping For One ASIN
-
 ```bash
-uv run python scraper.py --mode reviews --brand safari --asin B097JK62G2
+uv run python scraper.py --mode reviews --brand <brand_name> --asin <asin>
 ```
 
-Controls while interactive scraper is running:
+Responsibility: scrape reviews for one ASIN in interactive mode.
 
-- Press `s` in the browser page (or terminal) to save currently visible cards/reviews.
-- Press `q` in the browser page (or terminal) to quit the scraper loop.
+Controls:
 
-### Phase 2: Database Ingestion
+- `s`: save current visible reviews/products
+- `q`: quit current loop
 
-Load all raw JSON files into SQLite (`products`, `reviews`, `themes`, `insights` schema pre-created).
+### Database and analytics pipeline
 
 ```bash
 uv run python db.py --ingest all
 ```
 
-### Phase 3: AI Processing & Agent Insights
-
-Run NLP scoring first, then generate strategic insights.
+Responsibility: ingest raw JSON into SQLite tables.
 
 ```bash
 uv run python process.py
+```
+
+Responsibility: compute sentiment scores and aspect themes from review text.
+
+```bash
 uv run python insights.py
 ```
 
-`process.py` does:
+Responsibility: generate strategic insights from aggregated product/review/theme metrics.
 
-- review sentiment scoring (`sentiment_score`)
-- aspect-level theme extraction (`themes` table)
-
-`insights.py` does:
-
-- DB aggregation by brand
-- Gemini insight generation when API is available
-- fallback deterministic insights when API quota/model is unavailable
-
-### Phase 4: Visualization
-
-Launch the Streamlit dashboard.
+### Dashboard
 
 ```bash
 uv run streamlit run dashboard.py
 ```
 
-### Coverage Check (Assignment Readiness)
+Responsibility: launch interactive dashboard for brand comparison and recommendations.
 
-Check how many products and reviews were collected per brand.
+### Data coverage check
 
 ```bash
 uv run python -c "import sqlite3; c=sqlite3.connect('data/luggage.db'); cur=c.cursor(); brands=[r[0] for r in cur.execute('select distinct brand from products order by brand')]; print('coverage:'); [print(f'{b}: products={cur.execute(\"select count(distinct asin) from products where brand=?\",(b,)).fetchone()[0]}, reviews={cur.execute(\"select count(*) from reviews where brand=?\",(b,)).fetchone()[0]}') for b in brands]; c.close()"
 ```
 
-## 🧠 Sentiment & Theme Methodology
+Responsibility: print products and reviews count by brand from the SQLite database.
 
-To balance performance and accuracy over thousands of rows, the NLP pipeline avoids heavy zero-shot transformer models in favor of a deterministic, multi-layered approach:
+## Data Flow Summary
 
-1.  **Sentence-Level VADER:** Reviews are split into sentences. VADER calculates a compound score (-1 to +1) for the overall review text.
-2.  **Targeted Aspect Extraction:** A predefined list of high-value luggage components (wheels, zipper, handle, material, size, durability) acts as a heuristic filter.
-3.  **Contextual Polarity:** If an aspect is mentioned, the specific sentence containing that aspect is scored. This allows the system to correctly parse complex reviews (e.g., _"The wheels are amazing, but the zipper broke immediately"_ registers positive for wheels and negative for zipper).
-4.  **LLM Synthesis:** Aggregated sentiment and theme counts are fed to Gemini to identify macro-trends (e.g., "Brand X discounts heavily but suffers from zipper complaints").
+1. `scraper.py` and `bulk_reviews.py` write raw JSON files into `data/raw/`
+2. `db.py` loads raw files into `data/luggage.db`
+3. `process.py` enriches data with sentiment and themes
+4. `insights.py` writes strategic observations into `insights` table
+5. `dashboard.py` reads processed tables and renders the Streamlit UI
+
+## Notes
+
+- Run the Chrome debug command from Windows PowerShell or CMD .
+- If Gemini quota is unavailable, insight generation falls back to deterministic logic so the pipeline still completes.
